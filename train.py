@@ -51,6 +51,7 @@ def train_step(model: torch.nn.Module,
     
     return train_loss, train_acc
 
+
 # validation step function
 def val_step(model: torch.nn.Module,
              dataloader: torch.utils.data.DataLoader,
@@ -86,6 +87,7 @@ def val_step(model: torch.nn.Module,
         test_acc  /= total
         
     return test_loss, test_acc
+
 
 # trainer function
 def train(model: torch.nn.Module,

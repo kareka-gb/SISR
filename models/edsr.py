@@ -69,7 +69,7 @@ class edsr(nn.Module):
             self.scale_factors.append(2)
         self.conv1 = nn.Conv2d(in_channels=shape, out_channels=hidden_units, kernel_size=3, padding=1)
         self.res_blocks = nn.ModuleList([res_block(in_shape=hidden_units, hidden_units=hidden_units, out_shape=hidden_units) for i in range(num_res_blocks)])
-        self.conv2 = nn.Conv2d(in_channels=shape, out_channels=hidden_units, kernel_size=3, padding=1)
+        self.conv2 = nn.Conv2d(in_channels=hidden_units, out_channels=hidden_units, kernel_size=3, padding=1)
         self.up = nn.ModuleList([upsample(in_shape=hidden_units, out_shape=shape, scale=f) for f in self.scale_factors])
     
     def forward(self, x_in):
