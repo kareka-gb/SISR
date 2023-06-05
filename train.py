@@ -3,7 +3,7 @@ import pandas as pd
 
 from tqdm.auto import tqdm
 from timeit import default_timer as timer
-from torchmetrics import PeakSignalNoiseRatio as PSNR
+from torchmetrics import PeakSignalNoiseRatio
 
 
 # training step function
@@ -29,10 +29,10 @@ def train_step(model: torch.nn.Module,
     """
     # Training mode
     model.train()
+    PSNR = PeakSignalNoiseRatio(data_range=1.0).to(device)
     train_loss, train_psnr, total = 0, 0, 0
     for batch, (X, y) in enumerate(dataloader):
         X, y = X.to(device), y.to(device)
-        total = X.shape[0]
         
         y_pred = model(X)
         
@@ -45,10 +45,10 @@ def train_step(model: torch.nn.Module,
         
         train_psnr += PSNR(y_pred, y)
         if (batch + 1) % print_every == 0:
-            print(f"| Batch: {batch + 1}/{len(dataloader)} | Train Loss: {train_loss/total:.4f} | Train PSNR: {train_psnr/total:.4f} |")
+            print(f"| Batch: {batch + 1}/{len(dataloader)} | Train Loss: {train_loss/(batch + 1):.4f} | Train PSNR: {train_psnr/(batch + 1):.4f} |")
     
-    train_loss /= total
-    train_psnr /= total
+    train_loss /= len(dataloader)
+    train_psnr /= len(dataloader)
     
     return train_loss, train_psnr
 
@@ -71,20 +71,19 @@ def val_step(model: torch.nn.Module,
     validation loss, validation PSNR
     """
     # Evaluation mode
-    test_loss, test_psnr, total = 0, 0, 0
+    PSNR = PeakSignalNoiseRatio(data_range=1.0).to(device)
     model.eval()
     with torch.inference_mode():
-        test_loss, test_acc = 0, 0
+        test_loss, test_psnr = 0, 0
         for X, y in dataloader:
-            total += X.shape[0]
             X, y = X.to(device), y.to(device)
             test_pred = model(X)
             loss = loss_fn(test_pred, y)
             test_loss += loss.item()
             test_psnr += PSNR(test_pred, y)
         
-        test_loss /= total
-        test_psnr /= total
+        test_loss /= len(dataloader)
+        test_psnr /= len(dataloader)
         
     return test_loss, test_psnr
 
@@ -96,6 +95,7 @@ def train(model: torch.nn.Module,
           epochs: int,
           loss_fn: torch.nn.Module,
           optimizer: torch.optim.Optimizer,
+          print_every: int=20,
           scheduler: torch.optim.lr_scheduler=None,
           device: torch.device=torch.device('cpu')):
     """
@@ -124,6 +124,7 @@ def train(model: torch.nn.Module,
                                            dataloader=train_dataloader,
                                            loss_fn=loss_fn,
                                            optimizer=optimizer,
+                                           print_every=print_every,
                                            device=device)
         test_loss, test_acc = val_step(model=model,
                                        dataloader=test_dataloader,
@@ -133,9 +134,9 @@ def train(model: torch.nn.Module,
             scheduler.step()
         epoch_end = timer()
         train_loss_list.append(train_loss)
-        train_acc_list.append(train_acc)
+        train_acc_list.append(train_acc.item())
         test_loss_list.append(test_loss)
-        test_acc_list.append(test_acc)
+        test_acc_list.append(test_acc.item())
         time_taken.append(epoch_end-epoch_start)
         print("---------------------------------------------------------")
         print(f"| Train loss: {train_loss:.4f} | Train PSNR: {train_acc:.4f} |")

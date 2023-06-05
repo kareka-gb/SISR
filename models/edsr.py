@@ -81,4 +81,5 @@ class edsr(nn.Module):
         x = self.conv2(x + b)
         for block in self.up:
             x = block(x)
+        x = self.conv3(x)
         return x
