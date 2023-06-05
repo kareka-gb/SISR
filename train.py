@@ -1,7 +1,9 @@
 import torch
 import pandas as pd
+
 from tqdm.auto import tqdm
 from timeit import default_timer as timer
+from torchmetrics import PeakSignalNoiseRatio as PSNR
 
 
 # training step function
@@ -23,11 +25,11 @@ def train_step(model: torch.nn.Module,
     `print_every`   - Print results after every `print_every`th batch
 
     Returns:
-    train loss, train accuracy
+    train loss, train psnr
     """
     # Training mode
     model.train()
-    train_loss, train_acc, total = 0, 0, 0
+    train_loss, train_psnr, total = 0, 0, 0
     for batch, (X, y) in enumerate(dataloader):
         X, y = X.to(device), y.to(device)
         total = X.shape[0]
@@ -35,21 +37,20 @@ def train_step(model: torch.nn.Module,
         y_pred = model(X)
         
         loss = loss_fn(y_pred, y)
-        train_loss += loss.item() * X.shape[0]
+        train_loss += loss.item()
         
         optimizer.zero_grad()
         loss.backward()
         optimizer.step()
         
-        y_pred_class = torch.argmax(torch.softmax(y_pred, dim=1), dim=1)
-        train_acc += (y_pred_class == y).sum().item()
+        train_psnr += PSNR(y_pred, y)
         if (batch + 1) % print_every == 0:
-            print(f"| Batch: {batch + 1}/{len(dataloader)} | Train Loss: {train_loss/total:.4f} | Train accuracy: {train_acc/total:.4f} |")
+            print(f"| Batch: {batch + 1}/{len(dataloader)} | Train Loss: {train_loss/total:.4f} | Train PSNR: {train_psnr/total:.4f} |")
     
     train_loss /= total
-    train_acc  /= total
+    train_psnr /= total
     
-    return train_loss, train_acc
+    return train_loss, train_psnr
 
 
 # validation step function
@@ -67,10 +68,10 @@ def val_step(model: torch.nn.Module,
     `device`        - Device to run this function on
 
     Returns:
-    validation loss, validation accuracy
+    validation loss, validation PSNR
     """
     # Evaluation mode
-    test_loss, test_acc, total = 0, 0, 0
+    test_loss, test_psnr, total = 0, 0, 0
     model.eval()
     with torch.inference_mode():
         test_loss, test_acc = 0, 0
@@ -79,14 +80,13 @@ def val_step(model: torch.nn.Module,
             X, y = X.to(device), y.to(device)
             test_pred = model(X)
             loss = loss_fn(test_pred, y)
-            test_loss += loss.item() * X.shape[0]
-            test_pred_class = torch.argmax(torch.softmax(test_pred, dim=1), dim=1)
-            test_acc += (test_pred_class == y).sum().item()
+            test_loss += loss.item()
+            test_psnr += PSNR(test_pred, y)
         
         test_loss /= total
-        test_acc  /= total
+        test_psnr /= total
         
-    return test_loss, test_acc
+    return test_loss, test_psnr
 
 
 # trainer function
@@ -138,8 +138,8 @@ def train(model: torch.nn.Module,
         test_acc_list.append(test_acc)
         time_taken.append(epoch_end-epoch_start)
         print("---------------------------------------------------------")
-        print(f"| Train loss: {train_loss:.4f} | Train accuracy: {train_acc:.4f} |")
-        print(f"| Validation loss: {test_loss:.4f} | Validation accuracy: {test_acc:.4f} |")
+        print(f"| Train loss: {train_loss:.4f} | Train PSNR: {train_acc:.4f} |")
+        print(f"| Validation loss: {test_loss:.4f} | Validation PSNR: {test_acc:.4f} |")
         print(f"Epoch {epoch + 1} took {epoch_end - epoch_start:.2f} seconds to train and validate")
         print("---------------------------------------------------------")
         print()
@@ -152,9 +152,9 @@ def train(model: torch.nn.Module,
     model_results = pd.DataFrame()
     model_results['Epoch'] = list(range(epochs))
     model_results['Train Loss'] = train_loss_list
-    model_results['Train accuracy'] = train_acc_list
+    model_results['Train PSNR'] = train_acc_list
     model_results['Validation Loss'] = test_loss_list
-    model_results['Validation accuracy'] = test_acc_list
+    model_results['Validation PSNR'] = test_acc_list
     model_results['Epoch time'] = time_taken
     
     return model_results, train_end-train_start
