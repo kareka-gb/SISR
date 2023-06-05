@@ -30,7 +30,7 @@ def train_step(model: torch.nn.Module,
     model.train()
     PSNR = PeakSignalNoiseRatio(data_range=1.0).to(device)
     train_loss, train_psnr, total = 0, 0, 0
-    for X, y in tqdm(dataloader, desc='Training'):
+    for X, y in dataloader:
         X, y = X.to(device), y.to(device)
         
         y_pred = model(X)
@@ -72,7 +72,7 @@ def val_step(model: torch.nn.Module,
     model.eval()
     with torch.inference_mode():
         test_loss, test_psnr = 0, 0
-        for X, y in tqdm(dataloader, desc='Validation'):
+        for X, y in dataloader:
             X, y = X.to(device), y.to(device)
             test_pred = model(X)
             loss = loss_fn(test_pred, y)
