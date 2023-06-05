@@ -30,7 +30,7 @@ def train_step(model: torch.nn.Module,
     model.train()
     PSNR = PeakSignalNoiseRatio(data_range=1.0).to(device)
     train_loss, train_psnr, total = 0, 0, 0
-    for batch, (X, y) in tqdm(enumerate(dataloader), desc='Training'):
+    for X, y in tqdm(dataloader, desc='Training'):
         X, y = X.to(device), y.to(device)
         
         y_pred = model(X)
