@@ -3,8 +3,7 @@ import pandas as pd
 
 from tqdm.auto import tqdm
 from timeit import default_timer as timer
-from torchmetrics import PeakSignalNoiseRatio
-
+from utils import batch_psnr, psnr
 
 # training step function
 def train_step(model: torch.nn.Module,
@@ -28,7 +27,6 @@ def train_step(model: torch.nn.Module,
     """
     # Training mode
     model.train()
-    PSNR = PeakSignalNoiseRatio(data_range=1.0).to(device)
     train_loss, train_psnr, total = 0, 0, 0
     for X, y in dataloader:
         X, y = X.to(device), y.to(device)
@@ -42,10 +40,11 @@ def train_step(model: torch.nn.Module,
         loss.backward()
         optimizer.step()
         
-        train_psnr += PSNR(y_pred, y)
+        train_psnr += batch_psnr(y_pred, y, reduction='sum')
+        total += X.shape[0]
     
     train_loss /= len(dataloader)
-    train_psnr /= len(dataloader)
+    train_psnr /= total
     
     return train_loss, train_psnr
 
@@ -68,19 +67,19 @@ def val_step(model: torch.nn.Module,
     validation loss, validation PSNR
     """
     # Evaluation mode
-    PSNR = PeakSignalNoiseRatio(data_range=1.0).to(device)
     model.eval()
     with torch.inference_mode():
-        test_loss, test_psnr = 0, 0
+        test_loss, test_psnr, total = 0, 0, 0
         for X, y in dataloader:
             X, y = X.to(device), y.to(device)
             test_pred = model(X)
             loss = loss_fn(test_pred, y)
             test_loss += loss.item()
-            test_psnr += PSNR(test_pred, y)
+            test_psnr += batch_psnr(test_pred, y)
+            total += X.shape[0]
         
         test_loss /= len(dataloader)
-        test_psnr /= len(dataloader)
+        test_psnr /= total
         
     return test_loss, test_psnr
 

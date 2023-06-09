@@ -1,42 +1,7 @@
 from torch import nn
 
-class res_block(nn.Module):
-    """
-    Residual block used in EDSR
-
-    Args:
-    in_shape        - number of input channels
-    hidden_units    - number of filters in the convolutional layer
-    out_shape       - number of output channels
-    """
-    def __init__(self, in_shape:int, hidden_units:int, out_shape:int):
-        super().__init__()
-        self.conv_block = nn.Sequential(
-            nn.Conv2d(in_channels=in_shape, out_channels=hidden_units, kernel_size=3, padding=1),
-            nn.ReLU(inplace=True),
-            nn.Conv2d(in_channels=hidden_units, out_channels=out_shape, kernel_size=3, padding=1)
-        )
-    
-    def forward(self, x):
-        return x + self.conv_block(x)
-
-
-class upsample(nn.Module):
-    """
-    Upsampling block
-
-    Args:
-    in_shape - number of input channels
-    out_shape - number of output channels
-    scale - Scale by which the image should be upsampled
-    """
-    def __init__(self, shape:int, scale:int):
-        super().__init__()
-        self.conv1 = nn.Conv2d(in_channels=shape, out_channels=shape * scale * scale, kernel_size=3, padding=1)
-        self.shuffle = nn.PixelShuffle(scale)
-    
-    def forward(self, x):
-        return self.shuffle(self.conv1(x))
+from models.blocks import edsr_res_block as res_block
+from models.common import upsample, MeanShift
 
 class edsr(nn.Module):
     """
@@ -49,7 +14,7 @@ class edsr(nn.Module):
     scale           - Scaling factor by which we want to super resolve the image
     
     """
-    def __init__(self, shape:int, hidden_units:int=64, num_res_blocks:int=8, scale:int=4):
+    def __init__(self, shape:int=3, hidden_units:int=64, num_res_blocks:int=8, scale:int=4):
         super().__init__()
         self.scale_factors = []
         if scale == 2:
@@ -68,18 +33,24 @@ class edsr(nn.Module):
             self.scale_factors.append(2)
         else:
             raise Exception("Scaling factor must be one of (2, 3, 4, 6, 8)")
+        self.sub_mean = MeanShift(sign=-1)
         self.conv1 = nn.Conv2d(in_channels=shape, out_channels=hidden_units, kernel_size=3, padding=1)
         self.res_blocks = nn.ModuleList([res_block(in_shape=hidden_units, hidden_units=hidden_units, out_shape=hidden_units) for i in range(num_res_blocks)])
         self.conv2 = nn.Conv2d(in_channels=hidden_units, out_channels=hidden_units, kernel_size=3, padding=1)
         self.up = nn.ModuleList([upsample(shape=hidden_units, scale=f) for f in self.scale_factors])
         self.conv3 = nn.Conv2d(in_channels=hidden_units, out_channels=shape, kernel_size=3, padding=1)
+        self.add_mean = MeanShift(sign=1)
     
-    def forward(self, x_in):
-        x = b = self.conv1(x_in)
+    def forward(self, x):
+        x = self.sub_mean(x)
+        x = b = self.conv1(x)
+        # Residual blocks
         for block in self.res_blocks:
             x = block(x)
         x = self.conv2(x + b)
+        # Upsampling
         for block in self.up:
             x = block(x)
         x = self.conv3(x)
+        x = self.add_mean(x)
         return x
